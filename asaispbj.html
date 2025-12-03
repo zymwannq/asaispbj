@@ -3,35 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 智能比价扫码器 (极简版)</title>
+    <title>AI 智能比价扫码器 (抗造版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
         .text-shadow-lg { text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
-        @keyframes scan {
-          0% { top: 5%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 95%; opacity: 0; }
-        }
+        @keyframes scan { 0% { top: 5%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 95%; opacity: 0; } }
         body { background-color: black; color: white; }
     </style>
 </head>
 <body>
 
-    <div id="root">
-        <div class="flex h-screen items-center justify-center flex-col text-center p-4">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
-            <h2 class="text-xl">正在启动摄像头...</h2>
-            <p class="text-gray-400 text-sm mt-2">如果长时间没反应，请检查浏览器是否允许了摄像头权限</p>
-        </div>
-    </div>
+    <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useRef, useEffect } = React;
+        
+        // ⚠️ 你的 Key (如果这是你的Key请保留，如果不是请替换)
         const apiKey = "AIzaSyCoVsEx-iIVD7neiz0OMBK_TLMTnhmxagQ"; 
 
         function SmartPriceScanner() {
@@ -45,23 +37,17 @@
           const stabilityTimerRef = useRef(null);
           const isProcessingRef = useRef(false);
 
-          // 1. 启动摄像头 (通用版)
+          // 1. 启动摄像头
           useEffect(() => {
             const startCamera = async () => {
               try {
-                // video: true 自动适配电脑/手机
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                }
+                if (videoRef.current) videoRef.current.srcObject = stream;
               } catch (err) {
-                alert("摄像头启动失败:\n" + err.message + "\n请确保使用 HTTPS 或 localhost 访问。");
+                alert("摄像头启动失败: " + err.message);
               }
             };
             startCamera();
-            return () => {
-                if(stabilityTimerRef.current) clearTimeout(stabilityTimerRef.current);
-            };
           }, []);
 
           // 2. 运动检测
@@ -84,9 +70,7 @@
                   for (let i = 0; i < currentFrame.length; i += 16) { 
                     diff += Math.abs(currentFrame[i] - lastFrameRef.current[i]);
                   }
-                  const finalDiff = diff / (currentFrame.length / 16);
-
-                  if (finalDiff < 6) { 
+                  if ((diff / (currentFrame.length / 16)) < 6) { 
                      if (!stabilityTimerRef.current && !isProcessingRef.current) {
                          setStatus('stabilizing');
                          stabilityTimerRef.current = setTimeout(triggerScan, 1200);
@@ -106,9 +90,9 @@
             requestAnimationFrame(checkMotion);
           }, [status]);
 
-          // 3. AI 识别
+          // 3. 核心：触发 AI 识别 (包含修复逻辑)
           const triggerScan = async () => {
-            if (!apiKey) return;
+            if (!apiKey) { alert("请填写 API Key"); return; }
             isProcessingRef.current = true;
             setStatus('scanning');
             stabilityTimerRef.current = null;
@@ -123,43 +107,66 @@
                 const base64 = canvas.toDataURL('image/jpeg', 0.8);
 
                 setTimeout(async () => {
-                    setStatus('analyzing');
+                    setStatus('analyzing'); // 状态：比价中
                     
                     const prompt = `Identify the main product. Return ONLY raw JSON: {"name": "Short product name in Chinese", "usage": "One sentence usage tip in Chinese", "price_estimate": number (Approximate price in CNY)}. Example: {"name": "Mouse", "usage": "Gaming", "price_estimate": 120}`;
+                    
                     try {
                         const response = await fetch(
-                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
                             {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }] }] })
                             }
                         );
+                        
                         const data = await response.json();
-                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                        const cleanText = text.replace(/```json|```/g, '').trim();
-                        const aiData = JSON.parse(cleanText);
+                        
+                        // 🔍 调试：如果出错了，控制台会显示 API 返回了什么
+                        console.log("Gemini API 返回:", data);
 
-                        if (aiData && aiData.name) {
-                            setResult(aiData);
-                            const basePrice = aiData.price_estimate || 99;
-                            const platforms = [
-                                { id: 'jd', name: '京东自营', price: Math.floor(basePrice * 0.98), color: '#e1251b', url: 'https://search.jd.com/Search?keyword=' },
-                                { id: 'tb', name: '淘宝天猫', price: Math.floor(basePrice * 0.95), color: '#ff5000', url: 'https://s.taobao.com/search?q=' },
-                                { id: 'pdd', name: '拼多多', price: Math.floor(basePrice * 0.85), color: '#e02e24', url: 'https://mobile.yangkeduo.com/search_result.html?search_key=' },
-                            ];
-                            const minPrice = Math.min(...platforms.map(p => p.price));
-                            setPriceList(platforms.map(p => ({ ...p, isCheapest: p.price === minPrice })).sort((a, b) => a.price - b.price));
-                            setStatus('success');
-                        } else {
-                            handleCooldown();
+                        if (!data.candidates) {
+                            throw new Error("API 没有返回结果，可能是 Key 额度用完或网络问题");
                         }
+
+                        const text = data.candidates[0].content.parts[0].text;
+                        
+                        // 🛠️ 修复核心：暴力提取 JSON (不管 AI 说了什么废话，只抓取 {} 里的内容)
+                        const jsonMatch = text.match(/\{[\s\S]*\}/);
+                        if (!jsonMatch) throw new Error("AI 返回的格式看不懂");
+
+                        const aiData = JSON.parse(jsonMatch[0]);
+
+                        // 渲染结果
+                        setResult(aiData);
+                        const basePrice = aiData.price_estimate || 99;
+                        const platforms = [
+                            { id: 'jd', name: '京东自营', price: Math.floor(basePrice * 0.98), color: '#e1251b', url: 'https://search.jd.com/Search?keyword=' },
+                            { id: 'tb', name: '淘宝天猫', price: Math.floor(basePrice * 0.95), color: '#ff5000', url: 'https://s.taobao.com/search?q=' },
+                            { id: 'pdd', name: '拼多多', price: Math.floor(basePrice * 0.85), color: '#e02e24', url: 'https://mobile.yangkeduo.com/search_result.html?search_key=' },
+                        ];
+                        const minPrice = Math.min(...platforms.map(p => p.price));
+                        setPriceList(platforms.map(p => ({ ...p, isCheapest: p.price === minPrice })).sort((a, b) => a.price - b.price));
+                        setStatus('success'); // 成功！
+
                     } catch (e) {
-                        console.error("AI Error", e);
-                        handleCooldown();
+                        console.error("处理出错:", e);
+                        // 🚨 关键：如果失败，显示模拟数据，让你知道界面是好的
+                        alert("AI 识别出了点小问题，将展示模拟数据测试界面。\n错误原因: " + e.message);
+                        
+                        // 填充假数据兜底
+                        setResult({name: "测试商品(识别失败)", usage: "这是自动生成的测试结果，请检查API Key", price_estimate: 99});
+                        const fakePrice = 99;
+                        setPriceList([
+                           { id: 'jd', name: '京东自营', price: 100, color: '#e1251b', url: '#' },
+                           { id: 'pdd', name: '拼多多', price: 85, color: '#e02e24', url: '#', isCheapest: true },
+                        ]);
+                        setStatus('success');
                     }
                 }, 1500);
             } catch (e) {
+                alert("截屏失败: " + e.message);
                 handleCooldown();
             }
           };
@@ -181,51 +188,28 @@
               if (status === 'success') return 'border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.8)]';
               return 'border-white/40';
           };
-          
-          const getStatusIcon = () => {
-              if (status === 'scanning') return '🔍';
-              if (status === 'analyzing') return '🛒';
-              if (status === 'success') return '✅';
-              return '📷';
-          };
-          
-          const getStatusText = () => {
-              if (status === 'stabilizing') return '保持稳定...';
-              if (status === 'scanning') return 'AI 识别中...';
-              if (status === 'analyzing') return '全网比价中...';
-              if (status === 'success') return '比价完成！';
-              return '对准商品比价';
-          };
 
           return (
             <div className="min-h-screen bg-black text-white overflow-hidden relative font-sans flex flex-col md:flex-row">
-              {/* 背景层 */}
               <div className="absolute inset-0 z-0">
                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover opacity-60" />
                  <canvas ref={canvasRef} className="hidden" />
               </div>
 
-              {/* 左侧：扫描区 */}
               <div className="relative z-10 flex-1 flex items-center justify-center p-8">
                  <div className={`relative w-72 h-72 md:w-96 md:h-96 transition-all duration-500 ease-out border-[3px] rounded-3xl flex flex-col items-center justify-center ${getBoxColor()} ${status === 'stabilizing' ? 'scale-95' : 'scale-100'}`}>
                     {(status === 'scanning' || status === 'analyzing') && (
                         <div className={`absolute w-full h-1 shadow-[0_0_20px_currentColor] animate-[scan_1.5s_linear_infinite] ${status === 'analyzing' ? 'bg-purple-400 text-purple-400' : 'bg-blue-400 text-blue-400'}`}></div>
                     )}
-                    
-                    {/* 中心图标 (改用 Emoji) */}
                     <div className="text-6xl transition-all duration-300 transform animate-pulse">
-                        {getStatusIcon()}
+                        {status === 'scanning' ? '🔍' : status === 'analyzing' ? '🛒' : status === 'success' ? '✅' : '📷'}
                     </div>
-
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white/80 rounded-tl-xl -mt-1 -ml-1"></div>
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white/80 rounded-tr-xl -mt-1 -mr-1"></div>
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white/80 rounded-bl-xl -mb-1 -ml-1"></div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white/80 rounded-br-xl -mb-1 -mr-1"></div>
-                    <div className="absolute -bottom-12 text-lg font-bold tracking-widest text-shadow-lg">{getStatusText()}</div>
+                    <div className="absolute -bottom-12 text-lg font-bold tracking-widest text-shadow-lg">
+                        {status === 'stabilizing' ? '保持稳定...' : status === 'scanning' ? 'AI 识别中...' : status === 'analyzing' ? '全网比价中...' : status === 'success' ? '比价完成！' : '对准商品比价'}
+                    </div>
                  </div>
               </div>
 
-              {/* 右侧：结果面板 */}
               <div className={`relative z-20 w-full md:w-[420px] transition-transform duration-500 ease-spring ${status === 'success' ? 'translate-y-0 md:translate-x-0' : 'translate-y-full md:translate-y-0 md:translate-x-full'} fixed md:relative bottom-0 md:right-0`}>
                 {result && (
                     <div className="h-full flex flex-col justify-end md:justify-center p-4 md:p-6">
