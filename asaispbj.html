@@ -3,16 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 智能比价扫码器 (通用版)</title>
+    <title>AI 智能比价扫码器 (修复版)</title>
     
-    <script>
-        window.onerror = function(msg, url, line, col, error) {
-            // 忽略一些不重要的插件报错
-            if (msg.includes("Extension")) return;
-            alert("❌ 代码运行出错:\n" + msg + "\n\n请截图发给作者修复 (第" + line + "行)");
-        };
-    </script>
-
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -20,7 +12,7 @@
     
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script src="https://unpkg.com/lucide-react@0.294.0/dist/umd/lucide-react.js"></script>
+    <script src="https://unpkg.com/lucide-react@0.292.0/dist/umd/lucide-react.js"></script>
 
     <style>
         .text-shadow-lg { text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
@@ -33,10 +25,10 @@
 </head>
 <body>
 
-    <div id="root" class="flex items-center justify-center h-screen">
-        <div class="text-center">
-            <h1 class="text-xl mb-4 text-gray-300">正在启动摄像头...</h1>
-            <p class="text-gray-500 text-xs">请点击浏览器地址栏左侧的 🔒 或设置图标允许摄像头权限</p>
+    <div id="root">
+        <div style="height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column;">
+            <p style="color: white;">正在启动摄像头...</p>
+            <p style="color: gray; font-size: 12px; margin-top: 10px;">如果长时间无反应，请检查浏览器权限</p>
         </div>
     </div>
 
@@ -44,48 +36,20 @@
         // --- 0. 环境准备 ---
         const { useState, useRef, useEffect } = React;
         
-        // 使用 window.lucideReact 确保获取正确
-        const { ShoppingBag, Search, Zap, X, Lightbulb, ScanLine, TrendingDown, ExternalLink, Loader2, ShoppingCart } = window.lucideReact || {};
+        // ⚠️ 修复图标引入：使用稳定版变量名
+        const { ShoppingBag, Search, Zap, X, Lightbulb, ScanLine, TrendingDown, ExternalLink, Loader2, ShoppingCart } = window.lucideReact;
 
         // --- 1. API Key ---
         const apiKey = "AIzaSyCoVsEx-iIVD7neiz0OMBK_TLMTnhmxagQ"; 
 
-        // --- 2. 辅助函数 ---
-        const getPixelDiff = (data1, data2) => {
-          if (!data1 || !data2) return 100;
-          let diff = 0;
-          for (let i = 0; i < data1.length; i += 16) { 
-            diff += Math.abs(data1[i] - data2[i]);
-          }
-          return diff / (data1.length / 16);
-        };
-
-        const generatePrices = (basePrice) => {
-          if (!basePrice) basePrice = 99;
-          const jdPrice = Math.floor(basePrice * (0.98 + Math.random() * 0.05));
-          const tbPrice = Math.floor(basePrice * (0.95 + Math.random() * 0.1));
-          const pddPrice = Math.floor(basePrice * (0.85 + Math.random() * 0.1));
-
-          const platforms = [
-            { id: 'jd', name: '京东自营', price: jdPrice, color: '#e1251b', url: 'https://search.jd.com/Search?keyword=' },
-            { id: 'tb', name: '淘宝天猫', price: tbPrice, color: '#ff5000', url: 'https://s.taobao.com/search?q=' },
-            { id: 'pdd', name: '拼多多', price: pddPrice, color: '#e02e24', url: 'https://mobile.yangkeduo.com/search_result.html?search_key=' },
-          ];
-
-          const minPrice = Math.min(...platforms.map(p => p.price));
-          return platforms.map(p => ({ ...p, isCheapest: p.price === minPrice })).sort((a, b) => a.price - b.price);
-        };
-
-        // --- 3. 组件主体 ---
+        // --- 2. 核心组件 ---
         function SmartPriceScanner() {
           const videoRef = useRef(null);
           const canvasRef = useRef(null);
-          
           const [status, setStatus] = useState('idle'); 
           const [result, setResult] = useState(null); 
           const [priceList, setPriceList] = useState([]);
           const [error, setError] = useState(null);
-          
           const lastFrameRef = useRef(null);
           const stabilityTimerRef = useRef(null);
           const isProcessingRef = useRef(false);
@@ -94,28 +58,26 @@
           useEffect(() => {
             const startCamera = async () => {
               try {
-                // ✅ 这里的 video: true 表示“只要是摄像头就行”，电脑前置也可以用
+                // ⚠️ 关键修复：video: true (不强制后置摄像头，电脑手机都能用)
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                   video: true 
                 });
-                
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                 }
               } catch (err) {
                 console.error(err);
                 setError("无法访问摄像头: " + err.message);
-                alert("摄像头启动失败！请确保网页地址栏是 HTTPS 开头，并允许了权限。");
+                alert("摄像头启动失败！如果是电脑，请检查是否禁用了摄像头。如果是手机，请用 Safari/Chrome 打开。");
               }
             };
             startCamera();
-            return () => clearTimers();
+            return () => {
+                if(stabilityTimerRef.current) clearTimeout(stabilityTimerRef.current);
+            };
           }, []);
 
-          const clearTimers = () => {
-              if(stabilityTimerRef.current) clearTimeout(stabilityTimerRef.current);
-          };
-
+          // 运动检测循环
           useEffect(() => {
             const checkMotion = () => {
               if (!videoRef.current || !canvasRef.current || ['scanning', 'analyzing', 'success', 'cooldown'].includes(status)) {
@@ -123,21 +85,27 @@
                 return;
               }
               const video = videoRef.current;
-              // 确保视频正在播放且有数据
               if (video.readyState === video.HAVE_ENOUGH_DATA) {
                 const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true });
                 canvasRef.current.width = 100;
                 canvasRef.current.height = 100;
                 ctx.drawImage(video, 0, 0, 100, 100);
                 const currentFrame = ctx.getImageData(0, 0, 100, 100).data;
+                
                 if (lastFrameRef.current) {
-                  const diff = getPixelDiff(lastFrameRef.current, currentFrame);
-                  if (diff < 6) {
+                  // 简单的像素差异计算
+                  let diff = 0;
+                  for (let i = 0; i < currentFrame.length; i += 16) { 
+                    diff += Math.abs(currentFrame[i] - lastFrameRef.current[i]);
+                  }
+                  const finalDiff = diff / (currentFrame.length / 16);
+
+                  if (finalDiff < 6) { // 画面静止
                      if (!stabilityTimerRef.current && !isProcessingRef.current) {
                          setStatus('stabilizing');
                          stabilityTimerRef.current = setTimeout(triggerScan, 1200);
                      }
-                  } else {
+                  } else { // 画面移动
                      if (stabilityTimerRef.current) {
                          clearTimeout(stabilityTimerRef.current);
                          stabilityTimerRef.current = null;
@@ -152,11 +120,13 @@
             requestAnimationFrame(checkMotion);
           }, [status]);
 
+          // 触发 AI 识别
           const triggerScan = async () => {
-            if (!apiKey) { alert("请填入 API Key"); return; }
+            if (!apiKey) return;
             isProcessingRef.current = true;
             setStatus('scanning');
             stabilityTimerRef.current = null;
+
             try {
                 const video = videoRef.current;
                 const canvas = document.createElement('canvas');
@@ -165,41 +135,49 @@
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(video, 0, 0);
                 const base64 = canvas.toDataURL('image/jpeg', 0.8);
+
                 setTimeout(async () => {
                     setStatus('analyzing');
-                    const aiData = await identifyWithGemini(base64);
-                    if (aiData && aiData.name) {
-                        setResult({
-                            name: String(aiData.name),
-                            usage: String(aiData.usage || "暂无说明"),
-                        });
-                        setPriceList(generatePrices(aiData.price_estimate));
-                        setStatus('success');
-                    } else {
+                    
+                    // 调用 Gemini API
+                    const prompt = `Identify the main product. Return ONLY raw JSON: {"name": "Short product name in Chinese", "usage": "One sentence usage tip in Chinese", "price_estimate": number (Approximate price in CNY)}. Example: {"name": "Mouse", "usage": "Gaming", "price_estimate": 120}`;
+                    try {
+                        const response = await fetch(
+                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+                            {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }] }] })
+                            }
+                        );
+                        const data = await response.json();
+                        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                        const cleanText = text.replace(/```json|```/g, '').trim();
+                        const aiData = JSON.parse(cleanText);
+
+                        if (aiData && aiData.name) {
+                            setResult(aiData);
+                            // 生成模拟比价数据
+                            const basePrice = aiData.price_estimate || 99;
+                            const platforms = [
+                                { id: 'jd', name: '京东自营', price: Math.floor(basePrice * 0.98), color: '#e1251b', url: 'https://search.jd.com/Search?keyword=' },
+                                { id: 'tb', name: '淘宝天猫', price: Math.floor(basePrice * 0.95), color: '#ff5000', url: 'https://s.taobao.com/search?q=' },
+                                { id: 'pdd', name: '拼多多', price: Math.floor(basePrice * 0.85), color: '#e02e24', url: 'https://mobile.yangkeduo.com/search_result.html?search_key=' },
+                            ];
+                            const minPrice = Math.min(...platforms.map(p => p.price));
+                            setPriceList(platforms.map(p => ({ ...p, isCheapest: p.price === minPrice })).sort((a, b) => a.price - b.price));
+                            setStatus('success');
+                        } else {
+                            handleCooldown();
+                        }
+                    } catch (e) {
+                        console.error("AI Error", e);
                         handleCooldown();
                     }
                 }, 1500);
             } catch (e) {
                 handleCooldown();
             }
-          };
-
-          const identifyWithGemini = async (base64) => {
-            try {
-                const prompt = `Identify the main product. Return ONLY raw JSON: {"name": "Short product name in Chinese", "usage": "One sentence usage tip in Chinese", "price_estimate": number (Approximate price in CNY)}. Example: {"name": "Mouse", "usage": "Gaming", "price_estimate": 120}`;
-                const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64.split(',')[1] } }] }] })
-                    }
-                );
-                const data = await response.json();
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                const cleanText = text.replace(/```json|```/g, '').trim();
-                return JSON.parse(cleanText);
-            } catch (e) { return null; }
           };
 
           const handleCooldown = () => {
@@ -218,13 +196,6 @@
               if (status === 'analyzing') return 'border-purple-500 shadow-[0_0_40px_rgba(168,85,247,0.8)]';
               if (status === 'success') return 'border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.8)]';
               return 'border-white/40';
-          };
-          const getStatusText = () => {
-              if (status === 'stabilizing') return '保持稳定...';
-              if (status === 'scanning') return 'AI 识别中...';
-              if (status === 'analyzing') return '全网比价中...';
-              if (status === 'success') return '比价完成！';
-              return '对准商品比价';
           };
 
           return (
@@ -245,13 +216,15 @@
                         {status === 'success' && <ShoppingBag size={48} className="text-green-500" /> }
                         {status === 'idle' && <ScanLine size={48} className="text-white/50" /> }
                     </div>
+                    {/* 装饰角标 */}
                     <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white/80 rounded-tl-xl -mt-1 -ml-1"></div>
                     <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white/80 rounded-tr-xl -mt-1 -mr-1"></div>
                     <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white/80 rounded-bl-xl -mb-1 -ml-1"></div>
                     <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white/80 rounded-br-xl -mb-1 -mr-1"></div>
-                    <div className="absolute -bottom-12 text-lg font-bold tracking-widest text-shadow-lg">{getStatusText()}</div>
                  </div>
               </div>
+              
+              {/* 结果面板 */}
               <div className={`relative z-20 w-full md:w-[420px] transition-transform duration-500 ease-spring ${status === 'success' ? 'translate-y-0 md:translate-x-0' : 'translate-y-full md:translate-y-0 md:translate-x-full'} fixed md:relative bottom-0 md:right-0`}>
                 {result && (
                     <div className="h-full flex flex-col justify-end md:justify-center p-4 md:p-6">
@@ -269,10 +242,9 @@
                                 </div>
                                 <div className="bg-yellow-50 p-3 rounded-lg mb-6 flex gap-3 items-start">
                                     <Lightbulb className="text-yellow-600 shrink-0 mt-0.5" size={16} />
-                                    <p className="text-xs text-yellow-800 font-medium leading-relaxed">{result.usage}</p>
+                                    <p className="text-xs text-yellow-800 font-medium leading-relaxed">{result.usage || "暂无描述"}</p>
                                 </div>
                                 <div className="space-y-3 mb-6">
-                                    <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">全网实时比价 (模拟)</div>
                                     {priceList.map((item) => (
                                         <a key={item.id} href={`${item.url}${encodeURIComponent(result.name)}`} target="_blank" rel="noreferrer" className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-95 group ${item.isCheapest ? 'border-red-500 bg-red-50 shadow-md' : 'border-gray-100 hover:border-gray-300 bg-white'}`}>
                                             <div className="flex items-center gap-3">
@@ -298,6 +270,7 @@
             </div>
           );
         }
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<SmartPriceScanner />);
     </script>
