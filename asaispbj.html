@@ -85,11 +85,8 @@
             const startCamera = async () => {
               try {
                 // 尝试请求后置摄像头
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                  video: { 
-                    facingMode: "environment", 
-                    width: { ideal: 1920 }, 
-                    height: { ideal: 1080 } 
+                const stream = await navigator.mediaDevices.getUserMedia({
+                  video:true
                   } 
                 });
                 if (videoRef.current) videoRef.current.srcObject = stream;
