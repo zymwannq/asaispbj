@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 智能比价扫码器 (修复版)</title>
+    <title>AI 智能比价扫码器 (极简版)</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -12,63 +12,50 @@
     
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script src="https://unpkg.com/lucide-react@0.292.0/dist/umd/lucide-react.js"></script>
-
     <style>
         .text-shadow-lg { text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
         @keyframes scan {
           0% { top: 5%; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 95%; opacity: 0; }
         }
-        .ease-spring { transition-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         body { background-color: black; color: white; }
     </style>
 </head>
 <body>
 
     <div id="root">
-        <div style="height: 100vh; display: flex; align-items: center; justify-content: center; flex-direction: column;">
-            <p style="color: white;">正在启动摄像头...</p>
-            <p style="color: gray; font-size: 12px; margin-top: 10px;">如果长时间无反应，请检查浏览器权限</p>
+        <div class="flex h-screen items-center justify-center flex-col text-center p-4">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
+            <h2 class="text-xl">正在启动摄像头...</h2>
+            <p class="text-gray-400 text-sm mt-2">如果长时间没反应，请检查浏览器是否允许了摄像头权限</p>
         </div>
     </div>
 
     <script type="text/babel">
-        // --- 0. 环境准备 ---
         const { useState, useRef, useEffect } = React;
-        
-        // ⚠️ 修复图标引入：使用稳定版变量名
-        const { ShoppingBag, Search, Zap, X, Lightbulb, ScanLine, TrendingDown, ExternalLink, Loader2, ShoppingCart } = window.lucideReact;
-
-        // --- 1. API Key ---
         const apiKey = "AIzaSyCoVsEx-iIVD7neiz0OMBK_TLMTnhmxagQ"; 
 
-        // --- 2. 核心组件 ---
         function SmartPriceScanner() {
           const videoRef = useRef(null);
           const canvasRef = useRef(null);
           const [status, setStatus] = useState('idle'); 
           const [result, setResult] = useState(null); 
           const [priceList, setPriceList] = useState([]);
-          const [error, setError] = useState(null);
+          
           const lastFrameRef = useRef(null);
           const stabilityTimerRef = useRef(null);
           const isProcessingRef = useRef(false);
 
-          // 启动摄像头 (已修复：适配电脑端)
+          // 1. 启动摄像头 (通用版)
           useEffect(() => {
             const startCamera = async () => {
               try {
-                // ⚠️ 关键修复：video: true (不强制后置摄像头，电脑手机都能用)
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                  video: true 
-                });
+                // video: true 自动适配电脑/手机
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                 }
               } catch (err) {
-                console.error(err);
-                setError("无法访问摄像头: " + err.message);
-                alert("摄像头启动失败！如果是电脑，请检查是否禁用了摄像头。如果是手机，请用 Safari/Chrome 打开。");
+                alert("摄像头启动失败:\n" + err.message + "\n请确保使用 HTTPS 或 localhost 访问。");
               }
             };
             startCamera();
@@ -77,7 +64,7 @@
             };
           }, []);
 
-          // 运动检测循环
+          // 2. 运动检测
           useEffect(() => {
             const checkMotion = () => {
               if (!videoRef.current || !canvasRef.current || ['scanning', 'analyzing', 'success', 'cooldown'].includes(status)) {
@@ -93,19 +80,18 @@
                 const currentFrame = ctx.getImageData(0, 0, 100, 100).data;
                 
                 if (lastFrameRef.current) {
-                  // 简单的像素差异计算
                   let diff = 0;
                   for (let i = 0; i < currentFrame.length; i += 16) { 
                     diff += Math.abs(currentFrame[i] - lastFrameRef.current[i]);
                   }
                   const finalDiff = diff / (currentFrame.length / 16);
 
-                  if (finalDiff < 6) { // 画面静止
+                  if (finalDiff < 6) { 
                      if (!stabilityTimerRef.current && !isProcessingRef.current) {
                          setStatus('stabilizing');
                          stabilityTimerRef.current = setTimeout(triggerScan, 1200);
                      }
-                  } else { // 画面移动
+                  } else {
                      if (stabilityTimerRef.current) {
                          clearTimeout(stabilityTimerRef.current);
                          stabilityTimerRef.current = null;
@@ -120,7 +106,7 @@
             requestAnimationFrame(checkMotion);
           }, [status]);
 
-          // 触发 AI 识别
+          // 3. AI 识别
           const triggerScan = async () => {
             if (!apiKey) return;
             isProcessingRef.current = true;
@@ -139,7 +125,6 @@
                 setTimeout(async () => {
                     setStatus('analyzing');
                     
-                    // 调用 Gemini API
                     const prompt = `Identify the main product. Return ONLY raw JSON: {"name": "Short product name in Chinese", "usage": "One sentence usage tip in Chinese", "price_estimate": number (Approximate price in CNY)}. Example: {"name": "Mouse", "usage": "Gaming", "price_estimate": 120}`;
                     try {
                         const response = await fetch(
@@ -157,7 +142,6 @@
 
                         if (aiData && aiData.name) {
                             setResult(aiData);
-                            // 生成模拟比价数据
                             const basePrice = aiData.price_estimate || 99;
                             const platforms = [
                                 { id: 'jd', name: '京东自营', price: Math.floor(basePrice * 0.98), color: '#e1251b', url: 'https://search.jd.com/Search?keyword=' },
@@ -197,34 +181,51 @@
               if (status === 'success') return 'border-green-500 shadow-[0_0_40px_rgba(34,197,94,0.8)]';
               return 'border-white/40';
           };
+          
+          const getStatusIcon = () => {
+              if (status === 'scanning') return '🔍';
+              if (status === 'analyzing') return '🛒';
+              if (status === 'success') return '✅';
+              return '📷';
+          };
+          
+          const getStatusText = () => {
+              if (status === 'stabilizing') return '保持稳定...';
+              if (status === 'scanning') return 'AI 识别中...';
+              if (status === 'analyzing') return '全网比价中...';
+              if (status === 'success') return '比价完成！';
+              return '对准商品比价';
+          };
 
           return (
             <div className="min-h-screen bg-black text-white overflow-hidden relative font-sans flex flex-col md:flex-row">
+              {/* 背景层 */}
               <div className="absolute inset-0 z-0">
                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover opacity-60" />
                  <canvas ref={canvasRef} className="hidden" />
-                 {error && <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-red-500 p-4 text-center z-50">{error}</div>}
               </div>
+
+              {/* 左侧：扫描区 */}
               <div className="relative z-10 flex-1 flex items-center justify-center p-8">
                  <div className={`relative w-72 h-72 md:w-96 md:h-96 transition-all duration-500 ease-out border-[3px] rounded-3xl flex flex-col items-center justify-center ${getBoxColor()} ${status === 'stabilizing' ? 'scale-95' : 'scale-100'}`}>
                     {(status === 'scanning' || status === 'analyzing') && (
                         <div className={`absolute w-full h-1 shadow-[0_0_20px_currentColor] animate-[scan_1.5s_linear_infinite] ${status === 'analyzing' ? 'bg-purple-400 text-purple-400' : 'bg-blue-400 text-blue-400'}`}></div>
                     )}
-                    <div className="transition-all duration-300 transform">
-                        {status === 'scanning' && <Search size={48} className="text-blue-400 animate-pulse" /> }
-                        {status === 'analyzing' && <ShoppingCart size={48} className="text-purple-400 animate-bounce" /> }
-                        {status === 'success' && <ShoppingBag size={48} className="text-green-500" /> }
-                        {status === 'idle' && <ScanLine size={48} className="text-white/50" /> }
+                    
+                    {/* 中心图标 (改用 Emoji) */}
+                    <div className="text-6xl transition-all duration-300 transform animate-pulse">
+                        {getStatusIcon()}
                     </div>
-                    {/* 装饰角标 */}
+
                     <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white/80 rounded-tl-xl -mt-1 -ml-1"></div>
                     <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white/80 rounded-tr-xl -mt-1 -mr-1"></div>
                     <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white/80 rounded-bl-xl -mb-1 -ml-1"></div>
                     <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white/80 rounded-br-xl -mb-1 -mr-1"></div>
+                    <div className="absolute -bottom-12 text-lg font-bold tracking-widest text-shadow-lg">{getStatusText()}</div>
                  </div>
               </div>
-              
-              {/* 结果面板 */}
+
+              {/* 右侧：结果面板 */}
               <div className={`relative z-20 w-full md:w-[420px] transition-transform duration-500 ease-spring ${status === 'success' ? 'translate-y-0 md:translate-x-0' : 'translate-y-full md:translate-y-0 md:translate-x-full'} fixed md:relative bottom-0 md:right-0`}>
                 {result && (
                     <div className="h-full flex flex-col justify-end md:justify-center p-4 md:p-6">
@@ -238,11 +239,11 @@
                                         </div>
                                         <h2 className="text-2xl font-black text-gray-900 leading-tight">{result.name}</h2>
                                     </div>
-                                    <button onClick={handleCooldown} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} className="text-gray-400" /></button>
+                                    <button onClick={handleCooldown} className="p-2 hover:bg-gray-100 rounded-full text-2xl">✖️</button>
                                 </div>
                                 <div className="bg-yellow-50 p-3 rounded-lg mb-6 flex gap-3 items-start">
-                                    <Lightbulb className="text-yellow-600 shrink-0 mt-0.5" size={16} />
-                                    <p className="text-xs text-yellow-800 font-medium leading-relaxed">{result.usage || "暂无描述"}</p>
+                                    <span className="text-lg">💡</span>
+                                    <p className="text-xs text-yellow-800 font-medium leading-relaxed mt-1">{result.usage || "暂无描述"}</p>
                                 </div>
                                 <div className="space-y-3 mb-6">
                                     {priceList.map((item) => (
@@ -251,12 +252,12 @@
                                                 <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs" style={{backgroundColor: item.color}}>{item.name[0]}</div>
                                                 <div className="flex flex-col">
                                                     <span className={`font-bold text-sm ${item.isCheapest ? 'text-red-700' : 'text-gray-700'}`}>{item.name}</span>
-                                                    {item.isCheapest && <span className="text-[10px] text-red-500 font-bold flex items-center gap-1"><TrendingDown size={10}/> 全网最低</span>}
+                                                    {item.isCheapest && <span className="text-[10px] text-red-500 font-bold flex items-center gap-1">⬇️ 全网最低</span>}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <span className={`text-lg font-black font-mono ${item.isCheapest ? 'text-red-600' : 'text-gray-800'}`}>¥{item.price}</span>
-                                                <ExternalLink size={14} className="text-gray-300 group-hover:text-gray-500" />
+                                                <span className="text-gray-300">🔗</span>
                                             </div>
                                         </a>
                                     ))}
